@@ -31,7 +31,7 @@ from tqdm import tqdm
 
 import config
 from evaluator import classify
-from metrics import compute_metrics, compute_category_metrics, print_summary_table
+from metrics import compute_metrics, compute_category_metrics, print_summary_tables
 
 # ---------------------------------------------------------------------------
 # Logging setup
@@ -234,7 +234,7 @@ def main() -> None:
     logger.info("Category breakdown saved → %s", category_out)
 
     # ---- Print summary table to stdout -------------------------------------
-    print_summary_table(summary_df)
+    print_summary_tables(summary_df, category_df)
 
     logger.info("Benchmark complete.")
 
