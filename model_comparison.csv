@@ -1,4 +1,4 @@
 Model,Total_Prompts,Refused,Answered,Errors,ASR_%,Detection_Rate_%,Avg_Latency_s,Security_Score
-Groq-LLaMA3.3-70B,47,28,19,0,40.43,59.57,1.156,59.57
-Groq-Mixtral-8x7B,47,27,20,0,42.55,57.45,1.182,57.45
-Sarvam-105B,47,26,21,0,44.68,55.32,1.297,55.32
+Groq-LLaMA3.3-70B,47,29,18,0,38.3,61.7,1.403,61.7
+Groq-Mixtral-8x7B,47,29,18,0,38.3,61.7,1.264,61.7
+Sarvam-105B,47,27,20,0,42.55,57.45,1.417,57.45

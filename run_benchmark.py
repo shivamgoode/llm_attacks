@@ -233,6 +233,11 @@ def main() -> None:
     category_df.to_csv(category_out, index=False)
     logger.info("Category breakdown saved → %s", category_out)
 
+    # ---- Generate visualizations -------------------------------------------
+    from visualizations import generate_plots
+    plots_dir = summary_out.parent / "plots"
+    generate_plots(summary_df, category_df, plots_dir)
+
     # ---- Print summary table to stdout -------------------------------------
     print_summary_tables(summary_df, category_df)
 
