@@ -135,7 +135,12 @@ def main() -> None:
         logger.error("Dataset not found: %s", dataset_path)
         sys.exit(1)
 
-    df = pd.read_csv(dataset_path)
+    df = pd.read_csv(dataset_path, encoding="utf-8", encoding_errors="replace")
+    df.rename(columns={
+        "Prompt_ID": "prompt_id",
+        "Prompt": "prompt",
+        "Attack type": "attack_type"
+    }, inplace=True)
     required_cols = {"prompt_id", "prompt", "attack_type"}
     if not required_cols.issubset(df.columns):
         logger.error("Dataset must contain columns: %s", required_cols)
