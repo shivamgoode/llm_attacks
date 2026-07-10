@@ -22,7 +22,7 @@ SARVAM_BASE_URL = "https://api.sarvam.ai/v1"
 # Groq model identifiers (free tier, ultra-fast inference)
 GROQ_BASE_URL   = "https://api.groq.com/openai/v1"
 GROQ_MODEL_1    = "llama-3.3-70b-versatile"   # LLaMA 3.3 70B
-GROQ_MODEL_2    = "mixtral-8x7b-32768"         # Mixtral 8x7B
+GROQ_MODEL_2    = "llama-3.1-8b-instant"       # LLaMA 3.1 8B
 
 # ---------------------------------------------------------------------------
 # Request settings
@@ -32,6 +32,14 @@ MAX_RETRIES      = 3        # exponential-backoff retries on failure
 RETRY_BASE_DELAY = 2.0      # seconds (doubles each retry)
 MAX_TOKENS       = 1024     # max tokens in model response
 TEMPERATURE      = 0.0      # deterministic responses for reproducibility
+
+# ---------------------------------------------------------------------------
+# Large-run settings
+# ---------------------------------------------------------------------------
+DATASET_CHUNK_SIZE  = int(os.getenv("DATASET_CHUNK_SIZE", "10000"))
+RESULTS_FLUSH_EVERY = int(os.getenv("RESULTS_FLUSH_EVERY", "1000"))
+MAX_WORKERS         = int(os.getenv("MAX_WORKERS", "1"))
+RESULT_RESPONSE_CHARS = int(os.getenv("RESULT_RESPONSE_CHARS", "500"))
 
 # ---------------------------------------------------------------------------
 # File paths

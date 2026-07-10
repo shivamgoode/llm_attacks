@@ -7,5 +7,5 @@ import config
 MODELS = [
     SarvamModel(),
     GroqModel(config.GROQ_MODEL_1, "Groq-LLaMA3.3-70B"),
-    GroqModel(config.GROQ_MODEL_2, "Groq-Mixtral-8x7B"),
+    GroqModel(config.GROQ_MODEL_2, "Groq-LLaMA3.1-8B"),
 ]
