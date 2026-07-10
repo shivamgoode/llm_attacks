@@ -2,8 +2,17 @@
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from pathlib import Path
 
+MPLCONFIGDIR = Path(tempfile.gettempdir()) / "focus_shifting_matplotlib"
+MPLCONFIGDIR.mkdir(exist_ok=True)
+os.environ.setdefault("MPLCONFIGDIR", str(MPLCONFIGDIR))
+
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns

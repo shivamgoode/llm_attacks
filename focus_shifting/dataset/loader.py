@@ -14,15 +14,23 @@ import pandas as pd
 
 COLUMN_MAP = {
     "id": "prompt_id",
+    "prompt_id": "prompt_id",
     "Prompt_ID": "prompt_id",
+    "Prompt_id": "prompt_id",
     "Prompt": "prompt",
+    "prompt": "prompt",
     "Attack type": "attack_type",
+    "attack_type": "attack_type",
     "conversation": "conversation_messages",
+    "conversation_json": "conversation_messages",
+    "conversation_messages": "conversation_messages",
     "messages": "conversation_messages",
     "input": "conversation_messages",
     "instruction_types": "instruction_types",
     "instruction_parameters": "instruction_parameters",
     "instruction_params": "instruction_parameters",
+    "active_instruction_ids_json": "instruction_types",
+    "active_kwargs_json": "instruction_parameters",
 }
 
 
@@ -38,7 +46,19 @@ class ConversationRow:
 
 def normalize_dataset_columns(df: pd.DataFrame) -> pd.DataFrame:
     """Normalize accepted CSV header names to the focus shifting schema."""
-    return df.rename(columns=COLUMN_MAP)
+    columns: dict[Any, str] = {}
+    for column in df.columns:
+        column_text = str(column).lstrip("\ufeff")
+        canonical = _canonical(column_text)
+        if column_text in COLUMN_MAP:
+            columns[column] = COLUMN_MAP[column_text]
+        elif canonical in COLUMN_MAP:
+            columns[column] = COLUMN_MAP[canonical]
+        elif re.match(r"^turn_\d+_user$", canonical):
+            columns[column] = canonical.replace("turn_", "prompt_").replace("_user", "")
+        else:
+            columns[column] = column_text
+    return df.rename(columns=columns)
 
 
 def validate_dataset_header(dataset_path: Path) -> None:
@@ -84,6 +104,8 @@ def _row_to_conversation(row: pd.Series, index: int) -> ConversationRow:
     messages = _parse_messages(row.get("conversation_messages"), row.get("prompt"))
     instruction_texts = _parse_instruction_texts(row, messages)
     instruction_types = _parse_instruction_types(row.get("instruction_types"))
+    if not instruction_types:
+        instruction_types = _infer_instruction_types(instruction_texts)
     instruction_parameters = _parse_instruction_parameters(
         row.get("instruction_parameters"),
         instruction_types,
@@ -207,12 +229,48 @@ def _parse_instruction_types(value: Any) -> list[str]:
             if separator in parsed:
                 values = parsed.split(separator)
                 break
-        return [item.strip() for item in values if item.strip()]
+        return [_normalize_instruction_type(item) for item in values if item.strip()]
     if isinstance(parsed, list):
-        return [str(item).strip() for item in parsed if str(item).strip()]
+        return [_normalize_instruction_type(item) for item in parsed if str(item).strip()]
     if isinstance(parsed, dict):
-        return [str(key).strip() for key in parsed if str(key).strip()]
-    return [str(parsed).strip()]
+        return [_normalize_instruction_type(key) for key in parsed if str(key).strip()]
+    return [_normalize_instruction_type(parsed)]
+
+
+def _normalize_instruction_type(value: Any) -> str:
+    return str(value).strip().split(":", 1)[0]
+
+
+def _infer_instruction_types(instruction_texts: list[str]) -> list[str]:
+    """Infer supported checker names from natural-language sample dataset turns."""
+    instruction_types: list[str] = []
+    for text in instruction_texts:
+        lowered = text.lower()
+        if any(phrase in lowered for phrase in ("lowercase", "lower case", "no capital")):
+            instruction_types.append("change_case")
+        elif any(phrase in lowered for phrase in ("uppercase", "upper case", "all capital", "no lowercase")):
+            instruction_types.append("change_case")
+        elif "end with" in lowered or "should end" in lowered:
+            instruction_types.append("startend")
+        elif "start with" in lowered or "should start" in lowered:
+            instruction_types.append("startend")
+        elif "include the following keywords" in lowered or "containing keywords" in lowered:
+            instruction_types.append("keywords")
+        elif "should not include" in lowered or "should not contain" in lowered:
+            instruction_types.append("forbidden_keywords")
+        elif "at least" in lowered and "word" in lowered:
+            instruction_types.append("length_constraints")
+        elif ("less than" in lowered or "at least" in lowered) and "sentence" in lowered:
+            instruction_types.append("sentence_count")
+        elif "exactly" in lowered and "paragraph" in lowered:
+            instruction_types.append("paragraph_count")
+        elif "wrap your whole response with double quotation marks" in lowered:
+            instruction_types.append("quotation_wrapper")
+        elif "postscript" in lowered or "p.s." in lowered or "p.p.s" in lowered:
+            instruction_types.append("detectable_format")
+        elif "title wrapped in double angular brackets" in lowered:
+            instruction_types.append("detectable_content")
+    return instruction_types
 
 
 def _parse_instruction_texts(row: pd.Series, messages: list[dict[str, str]]) -> list[str]:
@@ -250,24 +308,39 @@ def _parse_instruction_parameters(
         return []
 
     if parsed is None:
-        return _attach_instruction_texts([{} for _ in instruction_types], instruction_texts)
+        return _attach_instruction_texts(
+            _infer_instruction_parameters(instruction_types, instruction_texts),
+            instruction_texts,
+        )
 
     if isinstance(parsed, list):
         parameters = [item if isinstance(item, dict) else {"value": item} for item in parsed]
+        parameters = [_normalize_instruction_parameter(parameter) for parameter in parameters]
         return _attach_instruction_texts(_pad_parameters(parameters, len(instruction_types)), instruction_texts)
 
     if isinstance(parsed, dict):
         if len(instruction_types) == 1 and not _has_instruction_keys(parsed, instruction_types):
-            return _attach_instruction_texts([parsed], instruction_texts)
+            return _attach_instruction_texts([_normalize_instruction_parameter(parsed)], instruction_texts)
         parameters = []
         for instruction_type in instruction_types:
             value = parsed.get(instruction_type, parsed.get(_canonical(instruction_type), {}))
-            parameters.append(value if isinstance(value, dict) else {"value": value})
+            parameter = value if isinstance(value, dict) else {"value": value}
+            parameters.append(_normalize_instruction_parameter(parameter))
         return _attach_instruction_texts(parameters, instruction_texts)
 
     if len(instruction_types) == 1:
         return _attach_instruction_texts([{"value": parsed}], instruction_texts)
     return _attach_instruction_texts(_pad_parameters([{"value": parsed}], len(instruction_types)), instruction_texts)
+
+
+def _normalize_instruction_parameter(parameter: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(parameter)
+    if "postscript_marker" in normalized:
+        normalized.setdefault("marker", normalized["postscript_marker"])
+        normalized.setdefault("phrase", normalized["postscript_marker"])
+    if "num_sections" in normalized:
+        normalized.setdefault("n", normalized["num_sections"])
+    return normalized
 
 
 def _attach_instruction_texts(
@@ -279,6 +352,67 @@ def _attach_instruction_texts(
         if index < len(instruction_texts):
             parameter.setdefault("instruction_text", instruction_texts[index])
     return enriched
+
+
+def _infer_instruction_parameters(
+    instruction_types: list[str],
+    instruction_texts: list[str],
+) -> list[dict[str, Any]]:
+    parameters: list[dict[str, Any]] = []
+    for index, instruction_type in enumerate(instruction_types):
+        text = instruction_texts[index] if index < len(instruction_texts) else ""
+        lowered = text.lower()
+        parameter: dict[str, Any] = {}
+
+        if instruction_type == "length_constraints":
+            parameter.update(_infer_count_parameters(lowered, "word"))
+        elif instruction_type == "sentence_count":
+            parameter.update(_infer_count_parameters(lowered, "sentence"))
+        elif instruction_type == "paragraph_count":
+            parameter.update(_infer_count_parameters(lowered, "paragraph"))
+        elif instruction_type == "keywords":
+            keywords = _extract_list_after_marker(text, "keywords:")
+            if keywords:
+                parameter["keywords"] = keywords
+        elif instruction_type == "forbidden_keywords":
+            keywords = _extract_list_after_marker(text, "words:")
+            if keywords:
+                parameter["keywords"] = keywords
+        elif instruction_type == "detectable_format":
+            if "p.p.s" in lowered:
+                parameter["marker"] = "P.P.S"
+            elif "p.s." in lowered:
+                parameter["marker"] = "P.S."
+        elif instruction_type == "detectable_content" and "double angular brackets" in lowered:
+            parameter["phrases"] = ["<<", ">>"]
+
+        parameters.append(parameter)
+    return parameters
+
+
+def _infer_count_parameters(text: str, unit: str) -> dict[str, Any]:
+    match = re.search(rf"\bat least\s+(\d+)\s+{unit}s?\b", text)
+    if match:
+        return {"relation": "at least", "num_words": int(match.group(1))}
+    match = re.search(rf"\bat most\s+(\d+)\s+{unit}s?\b", text)
+    if match:
+        return {"relation": "at most", "num_words": int(match.group(1))}
+    match = re.search(rf"\bless than\s+(\d+)\s+{unit}s?\b", text)
+    if match:
+        return {"relation": "less than", "num_words": int(match.group(1))}
+    match = re.search(rf"\bexactly\s+(\d+)\s+{unit}s?\b", text)
+    if match:
+        return {"relation": "exactly", "num_words": int(match.group(1))}
+    return {}
+
+
+def _extract_list_after_marker(text: str, marker: str) -> list[str]:
+    marker_index = text.lower().find(marker)
+    if marker_index == -1:
+        return []
+    tail = text[marker_index + len(marker):]
+    tail = tail.split(".", 1)[0]
+    return [item.strip(" \"'") for item in tail.split(",") if item.strip(" \"'")]
 
 
 def _pad_parameters(parameters: list[dict[str, Any]], expected: int) -> list[dict[str, Any]]:
